@@ -36,7 +36,7 @@
         </dependency>
         <dependency>
             <groupId>com.cromxt</groupId>
-            <artifactId>crombucket-common-modules</artifactId>
+            <artifactId>cromxt-common-modules</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
         <dependency>

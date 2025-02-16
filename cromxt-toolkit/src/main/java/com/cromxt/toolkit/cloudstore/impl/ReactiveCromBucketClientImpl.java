@@ -3,8 +3,8 @@ package com.cromxt.toolkit.cloudstore.impl;
 
 import com.cromxt.grpc.MediaHeadersKey;
 import com.cromxt.proto.files.*;
-import com.cromxt.common.routeing.BucketDetails;
-import com.cromxt.common.routeing.MediaDetails;
+import com.cromxt.common.crombucket.routeing.BucketDetails;
+import com.cromxt.common.crombucket.routeing.MediaDetails;
 import com.cromxt.toolkit.cloudstore.CromxtUserDetails;
 import com.cromxt.toolkit.cloudstore.ReactiveCromBucketClient;
 import com.cromxt.toolkit.cloudstore.exceptions.CloudStoreServerException;
@@ -32,7 +32,7 @@ public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
 
     public ReactiveCromBucketClientImpl(CromxtUserDetails cromxtUserDetails, WebClient.Builder webclientBuilder) {
         this.API_KEY = cromxtUserDetails.getApiKey();
-        this.webClient = webclientBuilder.baseUrl("http://localhost:8904/api/v1/routing/get-bucket-id")
+        this.webClient = webclientBuilder.baseUrl("http://localhost:8904/routing/api/v1/routes/get-bucket-id")
                 .build();
     }
 
@@ -48,7 +48,7 @@ public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
                 .setApiKey(API_KEY)
                 .build();
 
-        return bucketDetails.flatMap(bucket -> uploadFile(mediaObjectDataBuffer.getData(), mediaHeaders, bucket).map(accessUrl -> FileUploadResponse.builder()
+        return bucketDetails.flatMap(bucket -> uploadFile(mediaObjectDataBuffer.getMedia(), mediaHeaders, bucket).map(accessUrl -> FileUploadResponse.builder()
                 .fileId(accessUrl)
                 .build()));
     }
