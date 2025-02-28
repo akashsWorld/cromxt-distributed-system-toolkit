@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.cromxt.toolkit</groupId>
-    <artifactId>cromxt-toolkit</artifactId>
+    <artifactId>cromxt-maven-toolkit</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <name>cromxt-toolkit</name>
+    <name>cromxt-maven-toolkit</name>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -18,7 +18,6 @@
     </properties>
 
     <dependencies>
-
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-core</artifactId>
@@ -45,10 +44,11 @@
             <version>${grpc-version}</version>
         </dependency>
         <dependency>
-            <groupId>com.cromxt</groupId>
-            <artifactId>cloud-store-grpc-configuration</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>6.2.2</version>
         </dependency>
+
     </dependencies>
 
     <build>

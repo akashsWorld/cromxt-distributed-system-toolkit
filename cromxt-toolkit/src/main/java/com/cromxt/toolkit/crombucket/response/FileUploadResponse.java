@@ -1,4 +1,4 @@
-package com.cromxt.toolkit.cloudstore.response;
+package com.cromxt.toolkit.crombucket.response;
 
 
 import lombok.AllArgsConstructor;
@@ -12,4 +12,8 @@ import lombok.NoArgsConstructor;
 @Data
 public class FileUploadResponse {
     private String fileId;
+    private String accessUrl;
+    private String contentType;
+    private Long fileSize;
+    private String createdOn;
 }
