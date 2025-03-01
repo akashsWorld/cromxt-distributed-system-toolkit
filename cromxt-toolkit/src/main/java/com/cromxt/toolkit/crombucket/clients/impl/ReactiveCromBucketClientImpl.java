@@ -1,7 +1,6 @@
 package com.cromxt.toolkit.crombucket.clients.impl;
 
 
-import com.cromxt.common.crombucket.grpc.MediaHeadersKey;
 import com.cromxt.common.crombucket.routeing.BucketDetailsResponse;
 import com.cromxt.common.crombucket.routeing.MediaDetails;
 import com.cromxt.proto.files.*;
@@ -11,9 +10,7 @@ import com.cromxt.toolkit.crombucket.exceptions.CromBucketServerException;
 import com.cromxt.toolkit.crombucket.response.FileUploadResponse;
 import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
-import io.grpc.netty.NettyChannelBuilder;
 import io.grpc.stub.MetadataUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Lazy;
@@ -31,7 +28,7 @@ import java.net.URI;
 @Service
 @Lazy
 @RequiredArgsConstructor
-public class ReactiveReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
+public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
 
     private final CromBucketCreadentials clientCredentials;
     private final WebClient webClient;
@@ -59,7 +56,7 @@ public class ReactiveReactiveCromBucketClientImpl implements ReactiveCromBucketC
 
         MediaHeaders mediaHeaders = MediaHeaders.newBuilder()
                 .setClientSecret(clientCredentials.getClientSecret())
-                .setContentType(extractExtension(extension))
+                .setExtension(extractExtension(extension))
                 .setHlsStatus(hlsStatus)
                 .build();
 
@@ -69,7 +66,7 @@ public class ReactiveReactiveCromBucketClientImpl implements ReactiveCromBucketC
                                 .fileId(mediaObjectDetails.getFileId())
                                 .fileSize(mediaObjectDetails.getFileSize())
                                 .accessUrl(mediaObjectDetails.getAccessUrl())
-                                .contentType(mediaObjectDetails.getContentType())
+                                .contentType(mediaObjectDetails.getExtension())
                                 .createdOn(mediaObjectDetails.getCreatedOn())
                                 .build()
                         ));

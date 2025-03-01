@@ -12,8 +12,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 
 public interface CromBucketClient {
-    default String extractExtension(String extension) {
-        return extension.substring(extension.lastIndexOf(".") + 1);
+    default String extractExtension(String fileName) {
+        return fileName.substring(fileName.lastIndexOf(".") + 1);
     }
 
     default ManagedChannel createNettyManagedChannel(BucketDetailsResponse bucketDetailsResponse) {

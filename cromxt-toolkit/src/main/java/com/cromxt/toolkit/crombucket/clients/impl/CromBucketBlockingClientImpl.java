@@ -14,6 +14,7 @@ import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -24,12 +25,14 @@ import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Lazy
 public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
 
     private final RestClient restClient;
@@ -38,7 +41,7 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
 
     @Override
     public FileUploadResponse saveFile(MultipartFile file, Long fileSize) throws IOException {
-        return initiateUploading(fileSize, false, extractExtension(file.getName()), file.getInputStream());
+        return initiateUploading(fileSize, false, extractExtension(Objects.requireNonNull(file.getOriginalFilename())), file.getInputStream());
     }
 
     @Override
@@ -58,7 +61,7 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
         ManagedChannel channel = createNettyManagedChannel(bucketDetails);
 
         MediaHeaders mediaHeaders = MediaHeaders.newBuilder()
-                .setContentType(extension)
+                .setExtension(extension)
                 .setClientSecret(clientCredentials.getClientSecret())
                 .setHlsStatus(hlsStatus)
                 .build();
@@ -83,7 +86,7 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
                         .fileId(mediaObjectDetails.getFileId())
                         .accessUrl(mediaObjectDetails.getAccessUrl())
                         .fileSize(mediaObjectDetails.getFileSize())
-                        .contentType(mediaObjectDetails.getContentType())
+                        .contentType(mediaObjectDetails.getExtension())
                         .createdOn(mediaObjectDetails.getCreatedOn())
                         .build();
                 fileUploadResponseList.add(fileUploadResponse);
@@ -91,6 +94,7 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
 
             @Override
             public void onError(Throwable throwable) {
+                throwable.fillInStackTrace();
                 log.error("Some error occurred while saving the file with message {}", throwable.getMessage());
                 countDownLatch.countDown();
             }
@@ -120,7 +124,6 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
         } catch (InterruptedException exception) {
             throw new CromBucketServerException("Some process interrupt the thread flow");
         }
-
         if (fileUploadResponseList.isEmpty()) {
             throw new CromBucketServerException("Some error occurred on the Server.");
         }
