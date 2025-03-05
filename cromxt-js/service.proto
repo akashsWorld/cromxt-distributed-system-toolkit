@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+option java_package = "com.cromxt.proto.files";
+option java_multiple_files = true;
+
+
+
+
+enum OperationStatus {
+  SUCCESS = 0;
+  ERROR = 1;
+}
+
+message MediaDetails {
+  string extension = 1;
+  string clientId = 2;
+  Visibility visibility = 3;
+}
+
+enum Visibility {
+  PRIVATE = 0;
+  PUBLIC = 1;
+  PROTECTED = 2;
+}
+message MediaHeaders {
+  string extension = 1;
+  string clientSecret = 2;
+  Visibility visibility = 3;
+}
+message MediaUploadRequest {
+  bytes file = 1;
+}
+
+message MediaUploadResponse {
+  optional MediaObjectDetails mediaObjectDetails = 1;
+  OperationStatus status = 3;
+  optional string errorMessage = 4;
+}
+
+message MediaObjectDetails{
+  optional string mediaId = 1;
+  string fileId = 2;
+  string accessUrl = 3;
+  uint64 fileSize = 4;
+  string createdOn = 5;
+  string extension = 6;
+}
+
+service MediaHandlerService {
+  rpc uploadFile (stream MediaUploadRequest) returns (MediaUploadResponse) {}
+}
+
