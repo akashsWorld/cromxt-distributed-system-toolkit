@@ -4,7 +4,8 @@ import com.cromxt.common.crombucket.routeing.BucketDetailsResponse;
 import com.cromxt.common.crombucket.routeing.MediaDetails;
 import com.cromxt.proto.files.*;
 import com.cromxt.toolkit.crombucket.CromBucketCreadentials;
-import com.cromxt.toolkit.crombucket.clients.CromBucketBlockingClient;
+import com.cromxt.toolkit.crombucket.FileVisibility;
+import com.cromxt.toolkit.crombucket.clients.CromBucketWebClient;
 import com.cromxt.toolkit.crombucket.exceptions.CromBucketServerException;
 import com.cromxt.toolkit.crombucket.response.FileUploadResponse;
 import com.google.protobuf.ByteString;
@@ -14,80 +15,125 @@ import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 
-@Service
-@RequiredArgsConstructor
 @Slf4j
-@Lazy
-public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
+@RequiredArgsConstructor
+public class CromBucketWebClientImpl extends CromBucketWebClient {
 
-    private final RestClient restClient;
     private final CromBucketCreadentials clientCredentials;
+    private final RestClient restClient;
 
 
     @Override
-    public FileUploadResponse saveFile(MultipartFile file, Long fileSize) throws IOException {
-        return initiateUploading(fileSize, false, extractExtension(Objects.requireNonNull(file.getOriginalFilename())), file.getInputStream());
+    public FileUploadResponse saveFile(MultipartFile file) throws IOException {
+        file.getContentType();
+        return initiateUploading(FileVisibility.PUBLIC, file.getSize(), extractExtension(Objects.requireNonNull(file.getOriginalFilename())), file.getInputStream());
     }
 
     @Override
-    public FileUploadResponse saveFile(MultipartFile file, Long fileSize, Boolean hlsStatus) throws IOException {
-        return initiateUploading(fileSize, hlsStatus, extractExtension(file.getName()), file.getInputStream());
+    public FileUploadResponse saveFile(MultipartFile file, FileVisibility fileVisibility) throws IOException {
+        return initiateUploading(fileVisibility, file.getSize(), extractExtension(Objects.requireNonNull(file.getOriginalFilename())), file.getInputStream());
+    }
+
+    @Override
+    public FileUploadResponse deleteFile(String fileUrl) throws CromBucketServerException {
+        URI uri = URI.create(fileUrl);
+        return restClient
+                .delete()
+                .uri(uri)
+                .header("Authorization", clientCredentials.getClientSecret())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (clientRequest, clientResponse) -> {
+                    throw new CromBucketServerException("Some error occurred");
+                })
+                .body(FileUploadResponse.class);
+    }
+
+    @Override
+    public FileUploadResponse changeFileVisibility(String fileUrl, FileVisibility visibility) {
+        URI uri = URI.create(fileUrl);
+        return restClient
+                .patch()
+                .uri(uri)
+                .body(new HashMap<>(Map.of("visibility", visibility.name())))
+                .header("Authorization", clientCredentials.getClientSecret())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (request, response) -> {
+                    throw new CromBucketServerException("Some error occurred.");
+                })
+                .body(FileUploadResponse.class);
+    }
+
+    @Override
+    public FileUploadResponse updateFile(String fileUrl, MultipartFile file) throws IOException {
+        return null;
+    }
+
+    @Override
+    public FileUploadResponse updateFile(String fileUrl, MultipartFile file, FileVisibility visibility) throws IOException {
+        return null;
+    }
+
+    private FileUploadResponse initiateUpdate(
+            String fileUrl,
+            MultipartFile file,
+            FileVisibility visibility
+    ) {
+        deleteFile(fileUrl);
+        FileUploadResponse fileUploadResponse = null;
+        try {
+
+            fileUploadResponse = initiateUploading(visibility, file.getSize(), extractExtension(Objects.requireNonNull(file.getOriginalFilename())), file.getInputStream());
+        } catch (IOException ioException) {
+            log.error("Error occurred while update the file with message {}", ioException.getMessage());
+        }
+
+        return fileUploadResponse;
     }
 
     private FileUploadResponse initiateUploading(
+            FileVisibility visibility,
             Long fileSize,
-            Boolean hlsStatus,
             String extension,
             InputStream fileData
     ) {
 
-        BucketDetailsResponse bucketDetails = getBucketDetails(fileSize, extension);
+        BucketDetailsResponse bucketDetails = getBucketDetails(fileSize);
 
         ManagedChannel channel = createNettyManagedChannel(bucketDetails);
 
-        MediaHeaders mediaHeaders = MediaHeaders.newBuilder()
-                .setExtension(extension)
-                .setClientSecret(clientCredentials.getClientSecret())
-                .setHlsStatus(hlsStatus)
-                .build();
+        Metadata headers = generateHeaders(extension, clientCredentials.getClientSecret(), visibility);
 
-        Metadata headers = generateHeaders(mediaHeaders);
-
-        MediaHandlerServiceGrpc.MediaHandlerServiceStub mediaHandlerServiceStub = MediaHandlerServiceGrpc.newStub(channel).withInterceptors(
+        FileHandlerServiceGrpc.FileHandlerServiceStub fileHandlerGrpcStub = FileHandlerServiceGrpc.newStub(channel).withInterceptors(
                 MetadataUtils.newAttachHeadersInterceptor(headers)
         );
 
         List<FileUploadResponse> fileUploadResponseList = new ArrayList<>();
 
         CountDownLatch countDownLatch = new CountDownLatch(1);
-        StreamObserver<MediaUploadRequest> requestStreamObserver = mediaHandlerServiceStub.uploadFile(new StreamObserver<>() {
+        StreamObserver<FileUploadRequest> requestStreamObserver = fileHandlerGrpcStub.uploadFile(new StreamObserver<>() {
             @Override
             public void onNext(MediaUploadResponse mediaUploadResponse) {
                 if (mediaUploadResponse.getStatus() == OperationStatus.ERROR) {
                     return;
                 }
                 MediaObjectDetails mediaObjectDetails = mediaUploadResponse.getMediaObjectDetails();
+                FileVisibility savedFileVisibility = getVisibility(mediaObjectDetails.getVisibility());
                 FileUploadResponse fileUploadResponse = FileUploadResponse.builder()
-                        .fileId(mediaObjectDetails.getFileId())
+                        .mediaId(mediaObjectDetails.getMediaId())
                         .accessUrl(mediaObjectDetails.getAccessUrl())
                         .fileSize(mediaObjectDetails.getFileSize())
-                        .contentType(mediaObjectDetails.getExtension())
-                        .createdOn(mediaObjectDetails.getCreatedOn())
+                        .visibility(savedFileVisibility)
                         .build();
                 fileUploadResponseList.add(fileUploadResponse);
             }
@@ -111,7 +157,7 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
             int length;
             while ((length = fileData.read(chunkData)) > 0) {
                 requestStreamObserver.onNext(
-                        MediaUploadRequest
+                        FileUploadRequest
                                 .newBuilder()
                                 .setFile(ByteString.copyFrom(chunkData, 0, length))
                                 .build()
@@ -131,21 +177,24 @@ public class CromBucketBlockingClientImpl implements CromBucketBlockingClient {
         return fileUploadResponseList.get(0);
     }
 
-    private BucketDetailsResponse getBucketDetails(Long fileSize, String fileExtension) {
+    private BucketDetailsResponse getBucketDetails(Long fileSize) {
+        String url = String.format("%s/api/v1/routes", clientCredentials.getBaseUrl());
         MediaDetails mediaDetails = MediaDetails.builder()
-                .fileExtension(fileExtension)
                 .fileSize(fileSize)
                 .build();
-        String url = String.format("%s/api/v1/routes", clientCredentials.getBaseUrl());
         return restClient
                 .post()
                 .uri(URI.create(url))
-                .header("Api-Key", clientCredentials.getClientSecret())
+                .header("Authorization", clientCredentials.getClientSecret())
                 .body(mediaDetails)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (clientRequest, clientResponse) -> {
                     throw new CromBucketServerException("Some error occurred.");
                 })
                 .body(BucketDetailsResponse.class);
+    }
+
+    private Long getFileSize(MultipartFile file) {
+        return file.getSize();
     }
 }

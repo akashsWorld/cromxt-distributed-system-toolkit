@@ -1,6 +1,7 @@
 package com.cromxt.toolkit.crombucket.response;
 
 
+import com.cromxt.toolkit.crombucket.FileVisibility;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,9 +12,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @Data
 public class FileUploadResponse {
-    private String fileId;
+    private String mediaId;
     private String accessUrl;
-    private String contentType;
     private Long fileSize;
-    private String createdOn;
+    private FileVisibility visibility;
 }

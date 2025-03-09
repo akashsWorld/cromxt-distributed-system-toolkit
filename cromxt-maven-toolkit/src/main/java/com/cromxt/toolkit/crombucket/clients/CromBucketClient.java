@@ -2,21 +2,20 @@ package com.cromxt.toolkit.crombucket.clients;
 
 import com.cromxt.common.crombucket.grpc.MediaHeadersKey;
 import com.cromxt.common.crombucket.routeing.BucketDetailsResponse;
-import com.cromxt.proto.files.MediaHeaders;
-import com.cromxt.toolkit.crombucket.response.FileUploadResponse;
+import com.cromxt.proto.files.FileMetadata;
+import com.cromxt.proto.files.Visibility;
+import com.cromxt.toolkit.crombucket.FileVisibility;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.netty.NettyChannelBuilder;
-import org.springframework.web.multipart.MultipartFile;
+import lombok.NonNull;
 
-import java.io.IOException;
-
-public interface CromBucketClient {
-    default String extractExtension(String fileName) {
+abstract public class CromBucketClient {
+    protected String extractExtension(@NonNull String fileName) {
         return fileName.substring(fileName.lastIndexOf(".") + 1);
     }
 
-    default ManagedChannel createNettyManagedChannel(BucketDetailsResponse bucketDetailsResponse) {
+    protected ManagedChannel createNettyManagedChannel(BucketDetailsResponse bucketDetailsResponse) {
         return NettyChannelBuilder
                 .forAddress(bucketDetailsResponse.getHostName(), bucketDetailsResponse.getRpcPort())
                 .usePlaintext()
@@ -24,13 +23,38 @@ public interface CromBucketClient {
                 .build();
     }
 
-    default Metadata generateHeaders(MediaHeaders mediaHeaders) {
+    protected Metadata generateHeaders(String extension, String clientSecret, FileVisibility visibility) {
+
+        FileMetadata mediaHeaders = FileMetadata.newBuilder()
+                .setExtension(extension)
+                .setClientSecret(clientSecret)
+                .setVisibility(getVisibility(visibility))
+                .build();
 
         Metadata metadata = new Metadata();
 
-        Metadata.Key<byte[]> metaDataKey = (Metadata.Key<byte[]>) MediaHeadersKey.MEDIA_META_DATA
+        Metadata.Key<byte[]> metaDataKey = (Metadata.Key<byte[]>) MediaHeadersKey.FILE_METADATA
                 .getMetaDataKey();
         metadata.put(metaDataKey, mediaHeaders.toByteArray());
         return metadata;
     }
+
+    protected Visibility getVisibility(FileVisibility fileVisibility) {
+        return switch (fileVisibility) {
+            case PUBLIC -> Visibility.PUBLIC;
+            case PRIVATE -> Visibility.PRIVATE;
+            case PROTECTED -> Visibility.PROTECTED;
+        };
+    }
+    protected FileVisibility getVisibility(Visibility visibility){
+        return switch (visibility) {
+            case PUBLIC -> FileVisibility.PUBLIC;
+            case PRIVATE -> FileVisibility.PRIVATE;
+            case PROTECTED -> FileVisibility.PROTECTED;
+            case UNRECOGNIZED -> throw new IllegalArgumentException("Invalid visibility");
+        };
+    }
+
+
+
 }

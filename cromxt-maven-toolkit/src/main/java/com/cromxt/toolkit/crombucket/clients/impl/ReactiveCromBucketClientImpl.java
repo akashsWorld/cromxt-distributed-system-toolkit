@@ -5,6 +5,7 @@ import com.cromxt.common.crombucket.routeing.BucketDetailsResponse;
 import com.cromxt.common.crombucket.routeing.MediaDetails;
 import com.cromxt.proto.files.*;
 import com.cromxt.toolkit.crombucket.CromBucketCreadentials;
+import com.cromxt.toolkit.crombucket.FileVisibility;
 import com.cromxt.toolkit.crombucket.clients.ReactiveCromBucketClient;
 import com.cromxt.toolkit.crombucket.exceptions.CromBucketServerException;
 import com.cromxt.toolkit.crombucket.response.FileUploadResponse;
@@ -13,22 +14,20 @@ import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.stub.MetadataUtils;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.codec.multipart.FilePart;
-import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
-@Service
-@Lazy
 @RequiredArgsConstructor
-public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
+public class ReactiveCromBucketClientImpl extends ReactiveCromBucketClient {
 
     private final CromBucketCreadentials clientCredentials;
     private final WebClient webClient;
@@ -36,51 +35,88 @@ public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
 
     @Override
     public Mono<FileUploadResponse> saveFile(FilePart file, Long fileSize) {
-        return initiateUploading(fileSize, false,extractExtension(file.filename()),file.content());
+        return initiateUploading(FileVisibility.PUBLIC, fileSize, extractExtension(file.filename()), file.content());
     }
 
     @Override
-    public Mono<FileUploadResponse> saveFile(FilePart file, Long fileSize, Boolean hlsStatus) {
-        return initiateUploading(fileSize, hlsStatus,extractExtension(file.filename()), file.content());
+    public Mono<FileUploadResponse> saveFile(FilePart file, Long fileSize, FileVisibility visibility) {
+        return initiateUploading(visibility, fileSize, extractExtension(file.filename()), file.content());
+    }
+
+    @Override
+    public Mono<FileUploadResponse> deleteFile(String fileUrl) {
+        URI uri = URI.create(fileUrl);
+        return webClient
+                .delete()
+                .uri(uri)
+                .header("Authorization", clientCredentials.getClientSecret())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse -> Mono.error(new CromBucketServerException("Some error occurred.")))
+                .bodyToMono(FileUploadResponse.class);
+    }
+
+    @Override
+    public Mono<FileUploadResponse> changeFileVisibility(String fileUrl, FileVisibility visibility) {
+        URI uri = URI.create(fileUrl);
+        return webClient
+                .patch()
+                .uri(uri)
+                .bodyValue(new HashMap<>(Map.of("visibility", visibility.name())))
+                .header("Authorization", clientCredentials.getClientSecret())
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, clientResponse -> Mono.error(new CromBucketServerException("Some error occurred.")))
+                .bodyToMono(FileUploadResponse.class);
+    }
+
+    @Override
+    public Mono<FileUploadResponse> updateFile(FilePart filePart, Long fileSize, String fileUrl) {
+        return initiateUpdate(filePart, fileSize, fileUrl, FileVisibility.PUBLIC);
+    }
+
+    @Override
+    public Mono<FileUploadResponse> updateFile(FilePart filePart, Long fileSize, String fileUrl, FileVisibility visibility) {
+        return initiateUpdate(filePart,fileSize,fileUrl,visibility);
+    }
+
+
+    private Mono<FileUploadResponse> initiateUpdate(FilePart filePart, Long fileSize, String fileUrl, FileVisibility visibility) {
+        Mono<FileUploadResponse> deletedFile = deleteFile(fileUrl);
+        String extension = extractExtension(filePart.filename());
+        return deletedFile.flatMap(ignored->initiateUploading(visibility,fileSize,extension,filePart.content()));
     }
 
     private Mono<FileUploadResponse> initiateUploading(
+            FileVisibility visibility,
             Long fileSize,
-            Boolean hlsStatus,
             String extension,
             Flux<DataBuffer> fileData
-    ){
+    ) {
+        Mono<BucketDetailsResponse> bucketDetails = getBucketDetails(fileSize);
 
+        Metadata metadata = generateHeaders(extension, clientCredentials.getClientSecret(), visibility);
 
-        Mono<BucketDetailsResponse> bucketDetails = getBucketDetails(fileSize,extension);
-
-        MediaHeaders mediaHeaders = MediaHeaders.newBuilder()
-                .setClientSecret(clientCredentials.getClientSecret())
-                .setExtension(extractExtension(extension))
-                .setHlsStatus(hlsStatus)
-                .build();
 
         return bucketDetails
                 .flatMap(bucket ->
-                        uploadFile(fileData, mediaHeaders, bucket).map(mediaObjectDetails -> FileUploadResponse.builder()
-                                .fileId(mediaObjectDetails.getFileId())
+                        uploadFile(fileData, metadata, bucket).map(mediaObjectDetails -> FileUploadResponse.builder()
+                                .mediaId(mediaObjectDetails.getMediaId())
                                 .fileSize(mediaObjectDetails.getFileSize())
                                 .accessUrl(mediaObjectDetails.getAccessUrl())
-                                .contentType(mediaObjectDetails.getExtension())
-                                .createdOn(mediaObjectDetails.getCreatedOn())
+                                .visibility(getVisibility(mediaObjectDetails.getVisibility()))
                                 .build()
                         ));
 
     }
 
 
-    private Mono<BucketDetailsResponse> getBucketDetails(Long fileSize, String fileExtension) {
+    private Mono<BucketDetailsResponse> getBucketDetails(Long fileSize) {
 //       TODO: Add all media details;
+        String url = String.format("%s/api/v1/routes", clientCredentials.getBaseUrl());
+
         MediaDetails mediaDetails = MediaDetails.builder()
                 .fileSize(fileSize)
-                .fileExtension(fileExtension)
                 .build();
-        String url = String.format("%s/api/v1/routes", clientCredentials.getBaseUrl());
+
         return webClient
                 .post()
                 .uri(URI.create(url))
@@ -93,44 +129,29 @@ public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
 
 
     private Mono<MediaObjectDetails> uploadFile(Flux<DataBuffer> fileData,
-                                                MediaHeaders mediaHeaders,
+                                                Metadata metadata,
                                                 BucketDetailsResponse bucketDetailsResponse) {
 
         ManagedChannel channel = createNettyManagedChannel(bucketDetailsResponse);
 
-        Metadata headers = generateHeaders(mediaHeaders);
         // Use of reactive implementation instead of blocking.
 
-        ReactorMediaHandlerServiceGrpc.ReactorMediaHandlerServiceStub reactorMediaHandlerServiceStub = ReactorMediaHandlerServiceGrpc
+        ReactorFileHandlerServiceGrpc.ReactorFileHandlerServiceStub reactorFileHandlerServiceStub = ReactorFileHandlerServiceGrpc
                 .newReactorStub(channel)
-                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
+                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
 
-        Flux<MediaUploadRequest> data = fileData
+        Flux<FileUploadRequest> data = fileData
                 .map(dataBuffer -> {
                     byte[] bytes = new byte[dataBuffer.readableByteCount()];
                     dataBuffer.read(bytes);
                     DataBufferUtils.release(dataBuffer);
-                    return MediaUploadRequest
+                    return FileUploadRequest
                             .newBuilder()
                             .setFile(ByteString.copyFrom(bytes))
                             .build();
                 });
-      /*
 
-        * This is another way to handle upload the data;
-
-        return data.as(reactorMediaHandlerServiceStub::uploadFile)
-                .flatMap(fileUploadResponse -> {
-                    channel.shutdown();
-                    if (fileUploadResponse.getStatus() == OperationStatus.ERROR) {
-                        return Mono.error(new ClientException(fileUploadResponse.getErrorMessage()));
-                    }
-
-                    return Mono.just(fileUploadResponse.getFileName());
-                });
-       */
-
-        return reactorMediaHandlerServiceStub
+        return reactorFileHandlerServiceStub
                 .uploadFile(data)
                 .doOnError(err -> MediaUploadResponse.newBuilder().setStatus(OperationStatus.ERROR).setErrorMessage(err.getMessage()).build())
                 .flatMap(mediaUploadResponse -> {
@@ -138,14 +159,9 @@ public class ReactiveCromBucketClientImpl implements ReactiveCromBucketClient {
                     if (mediaUploadResponse.getStatus() == OperationStatus.ERROR) {
                         return Mono.error(new CromBucketServerException(mediaUploadResponse.getErrorMessage()));
                     }
-
                     return Mono.just(mediaUploadResponse.getMediaObjectDetails());
                 });
 
     }
-
-
-
-
 
 }
