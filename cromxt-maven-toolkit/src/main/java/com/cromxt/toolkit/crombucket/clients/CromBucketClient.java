@@ -1,7 +1,7 @@
 package com.cromxt.toolkit.crombucket.clients;
 
 import com.cromxt.common.crombucket.grpc.MediaHeadersKey;
-import com.cromxt.common.crombucket.routeing.BucketDetailsResponse;
+import com.cromxt.common.crombucket.routeing.StorageServerAddress;
 import com.cromxt.proto.files.FileMetadata;
 import com.cromxt.proto.files.Visibility;
 import com.cromxt.toolkit.crombucket.FileVisibility;
@@ -11,11 +11,14 @@ import io.grpc.netty.NettyChannelBuilder;
 import lombok.NonNull;
 
 abstract public class CromBucketClient {
+    protected static final String MEDIA_MANAGER_URL = "media-manager/api/v1/medias";
+    protected static final String BUCKET_MANAGER_URL = "bucket-manager/api/v1/buckets/fetch-storage-address";
+
     protected String extractExtension(@NonNull String fileName) {
         return fileName.substring(fileName.lastIndexOf(".") + 1);
     }
 
-    protected ManagedChannel createNettyManagedChannel(BucketDetailsResponse bucketDetailsResponse) {
+    protected ManagedChannel createNettyManagedChannel(StorageServerAddress bucketDetailsResponse) {
         return NettyChannelBuilder
                 .forAddress(bucketDetailsResponse.getHostName(), bucketDetailsResponse.getRpcPort())
                 .usePlaintext()
@@ -54,7 +57,6 @@ abstract public class CromBucketClient {
             case UNRECOGNIZED -> throw new IllegalArgumentException("Invalid visibility");
         };
     }
-
 
 
 }

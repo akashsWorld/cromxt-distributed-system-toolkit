@@ -1,21 +1,21 @@
-package com.cromxt.toolkit.crombucket.creadentials;
+package com.cromxt.toolkit.crombucket.users;
 
-import com.cromxt.toolkit.crombucket.CromBucketCreadentials;
+import com.cromxt.toolkit.crombucket.BucketUserDetails;
 
 
-public class LocalBucketCredential implements CromBucketCreadentials {
+public class LocalBucketUserDetails implements BucketUserDetails {
 
     private final String baseUrl;
     private final String clientSecret;
 
-    public LocalBucketCredential(
+    public LocalBucketUserDetails(
             String baseUrl
     ) {
         this.baseUrl = baseUrl;
         this.clientSecret = "long-client-secret";
     }
 
-    public LocalBucketCredential(
+    public LocalBucketUserDetails(
             Integer bucketPort
     ) {
         this.baseUrl = String.format("http://localhost:%s", bucketPort);

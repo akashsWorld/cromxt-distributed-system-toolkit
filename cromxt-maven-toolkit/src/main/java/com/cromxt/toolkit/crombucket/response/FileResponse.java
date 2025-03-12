@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 @Data
-public class FileUploadResponse {
+public class FileResponse {
     private String mediaId;
     private String accessUrl;
     private Long fileSize;
