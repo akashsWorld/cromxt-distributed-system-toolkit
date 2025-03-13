@@ -203,7 +203,8 @@ public class CromBucketWebClientImpl extends CromBucketWebClient {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (clientRequest, clientResponse) -> {
                     throw new CromBucketServerException("Some error occurred");
-                });
+                })
+                .toBodilessEntity();
     }
 
     private StorageServerAddress fetchStorageServer(Long fileSize) {
